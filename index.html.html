@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XIAN AURÍCULO V15 PRO - FULL</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        :root { --xian: #839e83; --accent: #ff6b00; --dark: #2c332c; --text: #444; --red: #e74c3c; --blue: #007bff; --gold: #d4af37; --excel: #27ae60; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body { 
+            font-family: 'Segoe UI', sans-serif; 
+            background: #f8f9fa; 
+            color: var(--text); 
+            min-height: 100vh; 
+            display: flex; 
+            flex-direction: column; 
+        }
+
+        header { 
+            background: white; 
+            padding: 15px 20px; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            border-bottom: 3px solid var(--xian); 
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+        
+        main { 
+            display: grid; 
+            grid-template-columns: 320px 1fr 320px; 
+            gap: 15px; 
+            padding: 15px; 
+            max-width: 1650px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        @media (max-width: 1250px) {
+            main { grid-template-columns: 320px 1fr; }
+            .editor-panel { grid-column: span 2; }
+        }
+        
+        .sidebar, .editor-panel { 
+            background: white; 
+            border-radius: 12px; 
+            padding: 15px; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05); 
+            display: flex; 
+            flex-direction: column; 
+            gap: 12px; 
+            height: fit-content;
+        }
+
+        .field { display: flex; flex-direction: column; gap: 4px; }
+        label { font-size: 0.7rem; font-weight: 700; color: #555; text-transform: uppercase; }
+        select, input, textarea { padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 0.9rem; width: 100%; font-family: inherit; }
+        textarea { resize: vertical; min-height: 80px; }
+        
+        .lat-selector { display: flex; gap: 5px; }
+        .lat-btn { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; background: white; font-weight: bold; font-size: 0.75rem; }
+        .lat-btn.active { background: var(--dark); color: white; border-color: var(--dark); }
+
+        .btn-main { background: var(--xian); color: white; padding: 12px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        .btn-save { background: var(--dark); color: white; padding: 10px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        .btn-csv { background: var(--excel); color: white; padding: 10px 20px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 0.8rem; }
+        .btn-add-custom { background: var(--accent); color: white; padding: 10px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        .btn-load { background: var(--blue); color: white; padding: 4px 8px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 10px; }
+
+        .map-viewport { 
+            background: white; 
+            border-radius: 12px; 
+            display: flex; 
+            flex-direction: column; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05); 
+        }
+        
+        .image-tools {
+            padding: 10px 20px;
+            background: #f1f1f1;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            font-size: 0.8rem;
+            border-top-left-radius: 12px;
+            border-top-right-radius: 12px;
+        }
+
+        .canvas-area { 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            position: relative; 
+            background: #fff; 
+            padding: 20px; 
+            min-height: 400px;
+        }
+
+        #capture-area { 
+            position: relative; 
+            display: inline-block; 
+            user-select: none; 
+            cursor: crosshair; 
+        }
+        #img-oreja { max-width: 100%; height: auto; display: block; border-radius: 10px; pointer-events: none; }
+        
+        .desc-section { padding: 20px; border-top: 1px solid #eee; background: #fffde7; }
+        .desc-title { font-weight: bold; color: var(--accent); margin-bottom: 10px; display: block; text-transform: uppercase; font-size: 0.8rem; }
+        #protocol-desc { font-size: 0.85rem; display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; color: #333; }
+
+        .punto-marker { position: absolute; display: none; align-items: center; transform: translate(-50%, -50%); z-index: 10; cursor: move; }
+        .punto-marker.active { display: flex; }
+        .punto-marker.custom .dot { background: var(--gold); border-color: white; }
+        
+        .dot { width: 15px; height: 15px; background: var(--accent); border: 2.5px solid white; border-radius: 50%; box-shadow: 0 0 5px rgba(0,0,0,0.4); pointer-events: auto; }
+        
+        .triangulo .dot { 
+            width: 0; height: 0; background: transparent; border: none; border-radius: 0; box-shadow: none;
+            border-left: 8px solid transparent; border-right: 8px solid transparent;
+            border-bottom: 15px solid var(--blue);
+        }
+
+        .label { margin-left: 6px; font-size: 11px; font-weight: 800; color: white; background: var(--dark); padding: 3px 6px; border-radius: 4px; white-space: nowrap; pointer-events: none; }
+        
+        #temp-marker { position: absolute; width: 15px; height: 15px; background: var(--red); border: 2px solid white; border-radius: 50%; transform: translate(-50%, -50%); display: none; z-index: 20; pointer-events: none; }
+
+        .custom-list { max-height: 180px; overflow-y: auto; border: 1px solid #eee; padding: 5px; border-radius: 6px; background: #fffaf0; }
+        .custom-item { display: flex; justify-content: space-between; align-items: center; padding: 5px; font-size: 0.75rem; border-bottom: 1px solid #eee; }
+        .btn-del { background: none; border: none; color: var(--red); cursor: pointer; font-weight: bold; font-size: 1rem; }
+
+        .code-output { background: #333; color: #0f0; padding: 10px; border-radius: 6px; font-family: monospace; font-size: 10px; white-space: pre-wrap; word-break: break-all; border: 1px solid #000; }
+
+        .history-section { background: #f1f1f1; border-top: 2px solid #ddd; padding: 20px; overflow-x: auto; }
+        .history-table { width: 100%; border-collapse: collapse; background: white; font-size: 0.8rem; }
+        .history-table th { background: var(--dark); color: white; padding: 10px; text-align: left; }
+        .history-table td { padding: 10px; border-bottom: 1px solid #eee; }
+        
+        .history-controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; gap: 20px; }
+        .search-history { flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #ccc; font-size: 0.9rem; }
+    </style>
+</head>
+<body>
+
+<header>
+    <div style="display:flex; align-items:center; gap:12px;">
+        <div style="width:25px; height:25px; background:var(--xian); border-radius:50%;"></div>
+        <h1 style="font-size: 1.2rem;">XIAN AURÍCULO V15 PRO</h1>
+    </div>
+    <div style="font-size: 0.75rem; color: var(--red); font-weight: bold;">🎯 CLIC EN OREJA O EDITA COORDENADAS PARA POSICIONAR</div>
+    <div id="date-display" style="font-weight: bold; color: var(--xian);"></div>
+</header>
+
+<main>
+    <div class="sidebar">
+        <div class="field"><label>Paciente</label><input type="text" id="p-nombre" placeholder="Nombre completo"></div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div class="field"><label>Edad</label><input type="number" id="p-edad"></div>
+            <div class="field"><label>Ciclo Femenino</label>
+                <select id="p-ciclo">
+                    <option value="-">No aplica</option>
+                    <option value="Menstrual">Menstrual</option>
+                    <option value="Folicular">Folicular</option>
+                    <option value="Ovulatoria">Ovulatoria</option>
+                    <option value="Lútea">Lútea</option>
+                </select>
+            </div>
+        </div>
+        <div class="field">
+            <label>Lateralidad</label>
+            <div class="lat-selector">
+                <button class="lat-btn active" id="btn-der" onclick="setLat('Derecha')">DERECHA</button>
+                <button class="lat-btn" id="btn-izq" onclick="setLat('Izquierda')">IZQUIERDA</button>
+            </div>
+        </div>
+        <div class="field">
+            <label>Protocolos</label>
+            <input type="text" id="p-search" placeholder="🔍 Buscar protocolo..." onkeyup="filterProtocols()">
+            <select id="p-select" size="6" onchange="updateSystem('protocolo')"></select>
+        </div>
+        <div class="field">
+            <label>Zonas Anatómicas</label>
+            <select id="z-select" onchange="updateSystem('zona')"><option value="">-- Seleccionar zona --</option></select>
+        </div>
+        <button class="btn-save" onclick="saveToHistory()">💾 Guardar Sesión</button>
+        <button class="btn-main" onclick="exportPDF()">📄 Generar PDF Ficha</button>
+    </div>
+
+    <div class="map-viewport">
+        <div class="image-tools">
+            <label style="color: var(--dark); font-weight: bold;">👂 CARGAR FOTO DE OREJA:</label>
+            <input type="file" id="file-input" accept="image/*" style="font-size: 0.7rem; border: none; padding: 0; width: auto;" onchange="loadCustomImage(event)">
+            <button onclick="resetImage()" style="padding: 4px 10px; font-size: 0.7rem; border-radius: 4px; cursor: pointer; background: white; border: 1px solid #ccc;">Restablecer Oreja Base</button>
+        </div>
+
+        <div class="canvas-area">
+            <div id="capture-area" onclick="handleMapClick(event)">
+                <img src="OREJA.2.png" id="img-oreja">
+                <div id="points-layer"></div>
+                <div id="temp-marker"></div>
+            </div>
+        </div>
+        <div class="desc-section">
+            <span class="desc-title">Ubicación y Función:</span>
+            <div id="protocol-desc">Seleccione un protocolo o punto personalizado...</div>
+        </div>
+    </div>
+
+    <div class="editor-panel">
+        <h3 style="font-size: 0.8rem; color: var(--accent); border-bottom: 2px solid #eee; padding-bottom:5px;">REGISTRAR / EDITAR PUNTO</h3>
+        <div class="field"><label>Nombre</label><input type="text" id="new-p-name" placeholder="Ej: Punto Nervioso"></div>
+        <div class="field">
+            <label>Coordenadas (%) - Edita para mover</label>
+            <div style="display:flex; gap:5px;">
+                <div style="flex:1"><label>Y (Altura)</label><input type="number" id="new-p-y" step="0.1" oninput="updateTempMarkerFromInputs()"></div>
+                <div style="flex:1"><label>X (Ancho)</label><input type="number" id="new-p-x" step="0.1" oninput="updateTempMarkerFromInputs()"></div>
+            </div>
+        </div>
+        <div class="field"><label>Descripción</label><textarea id="new-p-desc"></textarea></div>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 5px;">
+            <div class="field">
+                <label>Asociar a Protocolo</label>
+                <select id="assoc-proto"><option value="">Ninguno</option></select>
+            </div>
+            <div class="field">
+                <label>Asociar a Zona</label>
+                <select id="assoc-zona"><option value="">Ninguna</option></select>
+            </div>
+        </div>
+
+        <button class="btn-add-custom" onclick="addNewPoint()">➕ Registrar Punto</button>
+        
+        <div class="field" style="margin-top:10px;">
+            <label>Código para base de datos (Copia y pega):</label>
+            <div id="generated-code" class="code-output">Esperando punto...</div>
+        </div>
+        
+        <hr style="border:0; border-top:1px solid #eee; margin:5px 0;">
+        <label>Tus Puntos Guardados</label>
+        <div id="custom-list-container" class="custom-list"></div>
+    </div>
+</main>
+
+<div class="history-section">
+    <div class="history-controls">
+        <h3 style="font-size: 1.1rem; color: var(--dark);">Historial de Sesiones</h3>
+        <input type="text" id="history-search" class="search-history" placeholder="🔍 Buscar por nombre de paciente..." onkeyup="filterHistory()">
+        <button class="btn-csv" onclick="exportHistoryCSV()">📊 Exportar a Excel (CSV)</button>
+    </div>
+    <table class="history-table">
+        <thead><tr><th>Fecha</th><th>Paciente</th><th>Edad</th><th>Ciclo</th><th>Protocolo</th><th>Lado</th><th>Acciones</th></tr></thead>
+        <tbody id="history-body"></tbody>
+    </table>
+</div>
+
+<script>
+    let currentLat = "Derecha";
+    let historyData = JSON.parse(localStorage.getItem('auriculo_history')) || [];
+    
+    // --- BASE DE DATOS ESTATICA (PROTEGIDA) ---
+    const PUNTOS_DB = {
+        "Punto ZERO": { pos: [55.1, 58.4], desc: "Raíz del hélix. Balance general, homeostasis, regula energía." },
+        "Shen Men": { pos: [33.2,57], desc: "Foseta triangular. Ansiedad, insomnio, tensión emocional." },
+        "Máster Tranquilizante": { pos: [64.5, 51.1], desc: "Sobre el trago. Sedante, nerviosismo, relajación." },
+        "Máster Tálamo Subcortex": { pos: [64.9, 58.5], desc: "Antitrago interno. Control del dolor, trastornos morales.", tri: true },
+        "Máster Endocrino": { pos: [70, 52], desc: "Concha inferior. Regulación hormonal.", tri: true },
+        "Máster Oscilación": { pos: [56.5, 52.5], desc: "Equilibrio cerebral, aprendizaje.", tri: true },
+        "Máster Alergia": { pos: [12.8, 58.9], desc: "Alergias, asma, intoxicaciones.", tri: true },
+        "Máster Hombro": { pos: [63.5, 65.4], desc: "Dolor y lesiones de hombro." },
+        "Máster Cerebral": { pos: [84.5, 49.2], desc: "Memoria, funciones mentales." },
+        "Máster Sensorial": { pos: [82.1, 54.8], desc: "Estimulación de sentidos." },
+        "Máster Autonómico": { pos: [28.9, 52.3], desc: "Sistema nervioso, dolor visceral (Simpático).", tri: true },
+        "Problemas oculares": { pos: [67.5, 49.9], desc: "Afecciones de la vista." },
+        "Estrés (suprarrenal)": { pos: [59.4, 52.1], desc: "Glándulas suprarrenales y cortisol." },
+        "Adicciones (nicotina)": { pos: [61.9, 52.1], desc: "Control de impulsos y sustancias." },
+        "Manías": { pos: [63.9, 47.1], desc: "Comportamientos repetitivos y obsesivos." },
+        "Apetito": { pos: [57.5, 46.1], desc: "Regulación de la saciedad." },
+        "Problemas nasales": { pos: [54, 49], desc: "Congestión, rinitis y problemas respiratorios superiores." },
+        "Sed, hidratación": { pos: [52.4, 50.5], desc: "Equilibrio de líquidos corporales." },
+        "Energía, sistema inmune": { pos: [48, 52.1], desc: "Fortalecimiento de las defensas." },
+        "Lóbulo Z1 (Cerebro)": { pos: [82, 45], desc: "Cerebro, dolor dental, ansiedad." },
+        "Lóbulo Z2 (Olfato)": { pos: [86, 50], desc: "Agresividad, olfato." },
+        "Lóbulo Z3 (Cara)": { pos: [90, 55], desc: "Cara, amígdalas." },
+        "Lóbulo Z4 (Lengua)": { pos: [94, 50], desc: "Sensorial, lengua." },
+        "Lóbulo Z5 (Oído)": { pos: [92, 65], desc: "Trigémino, oído interno." },
+        "Lóbulo Z6 (Maxilar Sup)": { pos: [88, 60], desc: "Maxilar superior, memoria." },
+        "Lóbulo Z7 (Maxilar Inf)": { pos: [93, 40], desc: "Maxilar inferior, depresión." },
+        "Lóbulo Z8 (Depresión)": { pos: [96, 45], desc: "Depresión, dientes." },
+        "Cervical": { pos: [60.3, 59.7], desc: "Cuello, cefaleas." },
+        "Dorsal": { pos: [49.5, 60.8], desc: "Espalda, hombros." },
+        "Lumbar": { pos: [37.6, 56], desc: "Ciática, espalda baja." },
+        "Sacra": { pos: [33.5,50.8], desc: "Zona baja, ciática." },
+        "Punto Ciática": { pos: [30.7, 60], desc: "Dolor específico nervio ciático." },
+        "Trigemino": { pos: [79.2, 58], desc: "." },
+        "Clavícula": { pos: [62.1, 64.5], desc: "Dolor, fracturas." },
+        "Hombro": { pos: [55.2, 65.7], desc: "Dolor, artritis." },
+        "Brazo": { pos: [50.2, 65.7], desc: "Espasmos." },
+        "Codo": { pos: [45.2, 65.7], desc: "Esguinces, codo de tenista." },
+        "Antebrazo": { pos: [39.2, 66.8], desc: "Dolor muscular." },
+        "Muñeca": { pos: [35.2, 65.4], desc: "Túnel carpiano." },
+        "Mano y Dedos": { pos: [31.2, 67.4], desc: "Inflamación, artritis." },
+        "Pulgar": { pos: [24.3, 58.7], desc: "Esguinces." },
+        "Surco Posterior": { pos: [30, 10], desc: "Presión arterial." },
+        "Punto Felicidad": { pos: [50, 5], desc: "Estado de ánimo." },
+        "Sueño Profundo": { pos: [70, 5], desc: "Mejora calidad de sueño." },
+        "Pulmón": { pos: [65, 50], desc: "Respiratorio, piel, adicciones." },
+        "Corazón": { pos: [58, 48], desc: "Circulación, ansiedad." },
+        "Riñón": { pos: [34, 52], desc: "Huesos, audición." },
+        "Hígado": { pos: [45, 60], desc: "Metabolismo, muscles." },
+        "Estómago": { pos: [50, 40], desc: "Digestión, peso." },
+        "Bazo": { pos: [55, 65], desc: "Sangre, digestión." },
+        "Vesícula": { pos: [42, 62], desc: "Cálculos, migraña." },
+        "Páncreas": { pos: [48, 58], desc: "Diabetes." },
+        "Vejiga": { pos: [35, 50], desc: "Sistema urinario." },
+        "Intestino Grueso": { pos: [40, 42], desc: "Digestivo." },
+        "Triple Recalentador": { pos: [72, 45], desc: "Metabolismo general." },
+        "Cerebro (Concha)": { pos: [78, 55], desc: "Sistema nervioso, sueño." },
+        "Occipital": { pos: [78, 65], desc: "Dolor posterior de cabeza, mareo." },
+        "Simpático": { pos: [35, 40], desc: "Sistema autónomo, relajación muscular." },
+        "Ápice oreja": { pos: [11.5,57.8], desc: "Punto de sangría, fiebre, inflamación." },
+        "Boca": { pos: [52, 32], desc: "Problemas bucales, tos, adicciones." },
+        "Diafragma": { pos: [45, 42], desc: "Hipo, espasmos respiratorios." },
+        "Cardias": { pos: [48, 38], desc: "Reflujo, náuseas." },
+        "Suprarrenal": { pos: [62.9, 51], desc: "Antiinflamatorio, presión arterial." },
+        "Hipófisis": { pos: [80, 52], desc: "Control endocrino maestro." },
+        "Uretra": { pos: [32, 48], desc: "Control de esfínteres." },
+        "Recto": { pos: [25, 40], desc: "Estreñimiento, hemorroides." },
+        "Laringe": { pos: [62, 30], desc: "Garganta, voz." },
+        "Faringe": { pos: [62, 35], desc: "Dolor de garganta." },
+        "Tráquea": { pos: [58, 35], desc: "Tos, problemas respiratorios." },
+        "Ojo": { pos: [85, 42], desc: "Visión." },
+        "Oído": { pos: [70, 25], desc: "Audición, tinnitus." },
+        "Nariz interna": { pos: [65, 18], desc: "Rinitis, congesión." },
+        "Tonsilas": { pos: [90, 50], desc: "Amígdalas, defensas." },
+        "Pineal": { pos: [72, 58], desc: "Ritmos circadianos, depresión." },
+        "Sienes": { pos: [75, 55], desc: "Migrañas laterales." },
+        "Nicotina": { pos: [66, 22], desc: "Adicción al tabaco." },
+        "Relajación muscular": { pos: [70, 60], desc: "Tensión física." },
+        "Agresividad": { pos: [85, 55], desc: "Control de ira." },
+        "Amígdala": { pos: [82, 58], desc: "Emociones fuertes, pánico." },
+        "Tálamo": { pos: [64.9, 58.5], desc: "Dolor agudo.", tri: true }
+    };
+
+    const PROTOCOLOS = {
+        "Dolor": { p: ["Shen Men", "Punto ZERO", "Máster Tálamo Subcortex", "Simpático", "Cerebro (Concha)"] },
+        "Vértigo": { p: ["Occipital", "Hígado", "Simpático", "Ápice oreja", "Riñón", "Oído", "Máster Sensorial"] },
+        "Convulsión": { p: ["Shen Men", "Hígado", "Ápice oreja", "Máster Cerebral", "Occipital", "Corazón"] },
+        "Tos": { p: ["Boca", "Pulmón", "Bazo", "Tráquea", "Shen Men", "Triple Recalentador"] },
+        "Prurito (picazón)": { p: ["Ápice oreja", "Pulmón", "Bazo", "Corazón", "Shen Men", "Máster Alergia", "Diafragma", "Estrés (suprarrenal)"] },
+        "Vómitos": { p: ["Cardias", "Estómago", "Shen Men", "Simpático", "Hígado", "Bazo"] },
+        "Acidez": { p: ["Simpático", "Estómago", "Hígado", "Bazo", "Shen Men", "Máster Autonómico"] },
+        "Sueño (somnífero)": { p: ["Shen Men", "Riñón", "Corazón", "Ápice oreja", "Pineal", "Cerebro (Concha)", "Punto Felicidad"] },
+        "Calambres": { p: ["Simpático", "Shen Men", "Relajación muscular", "Hígado", "Bazo", "Máster Tálamo Subcortex"] },
+        "Hipotensivo": { p: ["Shen Men", "Hígado", "Riñón", "Corazón", "Surco Posterior", "Máster Autonómico"] },
+        "Hipertensivo": { p: ["Estrés (suprarrenal)", "Corazón", "Hígado", "Riñón", "Triple Recalentador", "Máster Cerebral"] },
+        "Disminuir FC": { p: ["Corazón", "Shen Men", "Simpático"] },
+        "Aumentar FC": { p: ["Simpático", "Corazón", "Estrés (suprarrenal)", "Máster Oscilación"] },
+        "Activar circulación": { p: ["Corazón", "Hígado", "Pulmón", "Bazo", "Triple Recalentador", "Simpático"] },
+        "Hemostático": { p: ["Estrés (suprarrenal)", "Hipófisis", "Diafragma", "Bazo", "Hígado", "Pulmón"] },
+        "Diurético": { p: ["Riñón", "Bazo", "Pulmón", "Triple Recalentador", "Máster Endocrino", "Vejiga", "Sed, hidratación"] },
+        "Antidiurético": { p: ["Vejiga", "Uretra", "Riñón", "Máster Autonómico"] },
+        "Laxante": { p: ["Intestino Grueso", "Bazo", "Triple Recalentador", "Pulmón", "Ápice oreja", "Recto", "Simpático"] },
+        "Antidiarreico": { p: ["Recto", "Intestino Grueso", "Bazo", "Shen Men", "Máster Endocrino", "Máster Autonómico", "Triple Recalentador"] },
+        "Leucorrea": { p: ["Riñón", "Triple Recalentador", "Hígado", "Bazo", "Máster Endocrino", "Estrés (suprarrenal)"] },
+        "Garganta": { p: ["Laringe", "Faringe", "Boca", "Tráquea", "Pulmón", "Shen Men", "Triple Recalentador"] },
+        "Visión": { p: ["Ápice oreja", "Riñón", "Hígado", "Ojo", "Problemas oculares", "Máster Sensorial"] },
+        "Audición (tinnitus)": { p: ["Oído", "Riñón", "Triple Recalentador", "Vesícula", "Occipital", "Máster Sensorial"] },
+        "Nariz": { p: ["Nariz interna", "Pulmón", "Oído", "Problemas nasales", "Máster Alergia"] },
+        "Antialérgicos": { p: ["Ápice oreja", "Estrés (suprarrenal)", "Máster Endocrino", "Máster Alergia", "Pulmón", "Shen Men"] },
+        "Antiinfecciosos": { p: ["Ápice oreja", "Tonsilas", "Estrés (suprarrenal)", "Máster Endocrino", "Shen Men", "Energía, sistema inmune", "Bazo"] },
+        "Antirreumáticos": { p: ["Ápice oreja", "Estrés (suprarrenal)", "Máster Endocrino", "Riñón", "Hígado", "Bazo", "Shen Men", "Tálamo"] },
+        "Antipiréticos": { p: ["Ápice oreja", "Estrés (suprarrenal)", "Riñón", "Hígado", "Occipital"] },
+        "Fortalecer Riñón": { p: ["Riñón", "Hígado", "Corazón", "Máster Endocrino", "Hipófisis", "Tálamo", "Estrés (suprarrenal)", "Cervical"] },
+        "Fortalecer Bazo": { p: ["Bazo", "Estómago", "Riñón", "Triple Recalentador", "Corazón", "Hígado", "Máster Endocrino"] },
+        "Espasmos musculares": { p: ["Relajación muscular", "Tálamo", "Punto ZERO", "Shen Men", "Simpático", "Hígado", "Dorsal"] },
+        "Dolor de hombro": { p: ["Hombro", "Clavícula", "Cervical", "Punto ZERO", "Shen Men", "Tálamo", "Máster Hombro", "Dorsal"] },
+        "Codo de tenista": { p: ["Codo", "Antebrazo", "Brazo", "Dorsal", "Cervical", "Tálamo", "Shen Men"] },
+        "Túnel carpiano": { p: ["Muñeca", "Mano y Dedos", "Antebrazo", "Cervical", "Shen Men", "Tálamo", "Simpático"] },
+        "Dolor de espalda": { p: ["Dorsal", "Lumbar", "Punto Ciática", "Sacra", "Shen Men", "Riñón", "Vejiga"] },
+        "Ciática": { p: ["Punto Ciática", "Lumbar", "Sacra", "Riñón", "Vejiga", "Shen Men", "Tálamo"] },
+        "Tortícolis": { p: ["Cervical", "Occipital", "Shen Men", "Tálamo", "Relajación muscular"] },
+        "Artritis reumatoidea": { p: ["Estrés (suprarrenal)", "Punto ZERO", "Shen Men", "Máster Endocrino", "Riñón", "Hígado", "Tálamo"] },
+        "Ansiedad": { p: ["Máster Cerebral", "Corazón", "Shen Men", "Simpático", "Máster Tranquilizante", "Pineal", "Punto ZERO"] },
+        "Depresión": { p: ["Cerebro (Concha)", "Pineal", "Shen Men", "Punto Felicidad", "Hígado", "Corazón", "Lóbulo Z8 (Depresión)"] },
+        "Irritabilidad": { p: ["Agresividad", "Máster Cerebral", "Hígado", "Shen Men", "Máster Tranquilizante"] },
+        "Manía": { p: ["Amígdala", "Máster Cerebral", "Shen Men", "Corazón", "Hígado", "Occipital"] },
+        "Migraña": { p: ["Sienes", "Occipital", "Shen Men", "Riñón", "Hígado", "Vesícula", "Simpático"] },
+        "Alcoholismo": { p: ["Hígado", "Pulmón", "Cerebro (Concha)", "Shen Men", "Máster Tranquilizante", "Boca", "Riñón"] },
+        "Tabaquismo": { p: ["Adicciones (nicotina)", "Pulmón", "Boca", "Shen Men", "Máster Tranquilizante", "Estrés (suprarrenal)"] },
+        "Drogas": { p: ["Pulmón", "Shen Men", "Hígado", "Riñón", "Cerebro (Concha)", "Boca", "Máster Tranquilizante"] },
+        "Control de peso": { p: ["Apetito", "Estómago", "Boca", "Bazo", "Máster Endocrino", "Problemas nasales", "Triple Recalentador"] },
+        "Hipoglucemia": { p: ["Páncreas", "Máster Endocrino", "Hígado", "Bazo", "Estrés (suprarrenal)"] },
+        "Lactancia": { p: ["Hipófisis", "Máster Endocrino", "Hígado", "Triple Recalentador"] },
+        "Distensión abdominal": { p: ["Estómago", "Intestino Grueso", "Bazo", "Triple Recalentador", "Hígado", "Simpático"] },
+        "Colitis / enteritis": { p: ["Intestino Grueso", "Shen Men", "Bazo", "Pulmón", "Máster Autonómico"] },
+        "Drenaje vesicular": { p: ["Vesícula", "Hígado", "Triple Recalentador"] },
+        "Dolor de garganta": { p: ["Laringe", "Boca", "Tráquea", "Faringe", "Shen Men", "Ápice oreja"] },
+        "Amigdalitis": { p: ["Tonsilas", "Faringe", "Shen Men", "Ápice oreja", "Energía, sistema inmune"] },
+        "Rinitis alérgica": { p: ["Nariz interna", "Pulmón", "Máster Alergia", "Estrés (suprarrenal)", "Shen Men", "Ápice oreja"] },
+        "Rinitis": { p: ["Nariz interna", "Pulmón", "Máster Endocrino", "Tráquea"] },
+        "Epistaxis": { p: ["Nariz interna", "Pulmón", "Shen Men", "Hígado", "Estrés (suprarrenal)"] },
+        "Ronquera": { p: ["Laringe", "Pulmón", "Corazón", "Triple Recalentador"] },
+        "Laringitis": { p: ["Laringe", "Pulmón", "Shen Men", "Ápice oreja"] },
+        "Faringitis": { p: ["Faringe", "Pulmón", "Shen Men", "Ápice oreja", "Triple Recalentador"] }
+    };
+
+    const ZONAS = {
+        "z1": { t: "I. Puntos Maestros", p: ["Punto ZERO", "Shen Men", "Máster Tranquilizante", "Máster Tálamo Subcortex", "Máster Endocrino", "Máster Oscilación", "Máster Alergia", "Máster Hombro", "Máster Cerebral", "Máster Sensorial", "Máster Autonómico"] },
+        "z2": { t: "II. Hélix", p: ["Ápice oreja", "Surco Posterior", "Punto Felicidad", "Sueño Profundo", "Recto", "Uretra"] },
+        "z3": { t: "III. Trago", p: ["Problemas oculares", "Estrés (suprarrenal)", "Adicciones (nicotina)", "Manías", "Apetito", "Problemas nasales", "Sed, hidratación", "Energía, sistema inmune"] },
+        "z4": { t: "IV. Lóbulo", p: ["Lóbulo Z1 (Cerebro)", "Lóbulo Z2 (Olfato)", "Lóbulo Z3 (Cara)", "Lóbulo Z4 (Lengua)", "Lóbulo Z5 (Oído)", "Lóbulo Z6 (Maxilar Sup)", "Lóbulo Z7 (Maxilar Inf)", "Lóbulo Z8 (Depresión)"] },
+        "z5": { t: "V. Antihélix (Columna)", p: ["Cervical", "Dorsal", "Lumbar",  "Trigemino", "Sacra", "Punto Ciática"] },
+        "z6": { t: "VI. Fosa Escafoidea (M. Sup)", p: ["Clavícula", "Hombro", "Brazo", "Codo", "Antebrazo", "Muñeca", "Mano y Dedos", "Pulgar"] },
+        "z7": { t: "VII. Antitrago", p: ["Sienes", "Occipital", "Tálamo", "Máster Tálamo Subcortex"] },
+        "z8": { t: "VIII. Órganos Internos (Concha)", p: ["Pulmón", "Corazón", "Riñón", "Hígado", "Estómago", "Bazo", "Vesícula", "Páncreas", "Vejiga", "Intestino Grueso", "Triple Recalentador", "Cerebro (Concha)"] }
+    };
+
+    // --- FUNCIONES CORE ---
+
+    // CARGAR IMAGEN DE OREJA PERSONALIZADA
+    function loadCustomImage(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            document.getElementById('img-oreja').src = e.target.result;
+        }
+        reader.readAsDataURL(file);
+    }
+
+    // RESETEAR IMAGEN A LA ORIGINAL
+    function resetImage() {
+        document.getElementById('img-oreja').src = "OREJA.2.png";
+        document.getElementById('file-input').value = "";
+    }
+
+    function handleMapClick(e) {
+        if(e.target.classList.contains('dot') || e.target.classList.contains('label')) return;
+        const area = document.getElementById('capture-area');
+        const rect = area.getBoundingClientRect();
+        const x = ((e.clientX - rect.left) / rect.width * 100);
+        const y = ((e.clientY - rect.top) / rect.height * 100);
+        document.getElementById('new-p-x').value = x.toFixed(1);
+        document.getElementById('new-p-y').value = y.toFixed(1);
+        updateTempMarker(y, x);
+        updateGeneratedCode();
+    }
+
+    function updateTempMarkerFromInputs() {
+        const x = parseFloat(document.getElementById('new-p-x').value);
+        const y = parseFloat(document.getElementById('new-p-y').value);
+        if (!isNaN(x) && !isNaN(y)) {
+            updateTempMarker(y, x);
+            updateGeneratedCode();
+        }
+    }
+
+    function updateTempMarker(y, x) {
+        const temp = document.getElementById('temp-marker');
+        temp.style.left = x + '%';
+        temp.style.top = y + '%';
+        temp.style.display = 'block';
+    }
+
+    function updateGeneratedCode() {
+        const name = document.getElementById('new-p-name').value || "Nombre del Punto";
+        const x = document.getElementById('new-p-x').value || "0";
+        const y = document.getElementById('new-p-y').value || "0";
+        const desc = document.getElementById('new-p-desc').value || "Descripción aquí";
+        const code = `"${name}": { pos: [${y}, ${x}], desc: "${desc}" },`;
+        document.getElementById('generated-code').innerText = code;
+    }
+
+    function renderMarkers() {
+        const layer = document.getElementById('points-layer');
+        layer.innerHTML = '';
+        const customDB = JSON.parse(localStorage.getItem('custom_auriculo_points')) || {};
+        const FULL_DB = {...PUNTOS_DB, ...customDB};
+        Object.keys(FULL_DB).forEach(name => {
+            const data = FULL_DB[name];
+            const div = document.createElement('div');
+            const safeName = name.replace(/\s|\/|\(|\)/g, '');
+            div.className = 'punto-marker' + (data.tri ? ' triangulo' : '') + (data.custom ? ' custom' : '');
+            div.id = `pt-${safeName}`;
+            div.style.top = data.pos[0] + '%';
+            div.style.left = data.pos[1] + '%';
+            div.innerHTML = `<div class="dot"></div><div class="label">${name}</div>`;
+            layer.appendChild(div);
+        });
+    }
+
+    function addNewPoint() {
+        const name = document.getElementById('new-p-name').value;
+        const x = parseFloat(document.getElementById('new-p-x').value);
+        const y = parseFloat(document.getElementById('new-p-y').value);
+        const desc = document.getElementById('new-p-desc').value;
+        const pAssoc = document.getElementById('assoc-proto').value;
+        const zAssoc = document.getElementById('assoc-zona').value;
+        if(!name || isNaN(x) || isNaN(y)) return alert("Nombre y coordenadas requeridas.");
+        const currentCustom = JSON.parse(localStorage.getItem('custom_auriculo_points')) || {};
+        currentCustom[name] = { pos: [y, x], desc: desc, custom: true };
+        localStorage.setItem('custom_auriculo_points', JSON.stringify(currentCustom));
+        if(pAssoc && PROTOCOLOS[pAssoc]) {
+            if(!PROTOCOLOS[pAssoc].p.includes(name)) PROTOCOLOS[pAssoc].p.push(name);
+        }
+        if(zAssoc && ZONAS[zAssoc]) {
+            if(!ZONAS[zAssoc].p.includes(name)) ZONAS[zAssoc].p.push(name);
+        }
+        renderMarkers();
+        renderCustomPointsList();
+        document.getElementById('temp-marker').style.display = 'none';
+        alert("Punto registrado.");
+    }
+
+    function renderCustomPointsList() {
+        const container = document.getElementById('custom-list-container');
+        const customDB = JSON.parse(localStorage.getItem('custom_auriculo_points')) || {};
+        container.innerHTML = '';
+        Object.keys(customDB).forEach(name => {
+            const item = document.createElement('div');
+            item.className = 'custom-item';
+            item.innerHTML = `
+                <span onclick="toggleCustomPoint('${name}')" style="cursor:pointer; flex:1">📍 ${name}</span>
+                <button class="btn-load" style="margin-right:5px" onclick="editCustomPoint('${name}')">✎</button>
+                <button class="btn-del" onclick="deleteCustomPoint('${name}')">×</button>
+            `;
+            container.appendChild(item);
+        });
+    }
+
+    function deleteCustomPoint(name) {
+        if(!confirm(`¿Borrar el punto "${name}"?`)) return;
+        const customDB = JSON.parse(localStorage.getItem('custom_auriculo_points')) || {};
+        delete customDB[name];
+        localStorage.setItem('custom_auriculo_points', JSON.stringify(customDB));
+        renderMarkers();
+        renderCustomPointsList();
+    }
+
+    function editCustomPoint(name) {
+        const customDB = JSON.parse(localStorage.getItem('custom_auriculo_points')) || {};
+        const p = customDB[name] || PUNTOS_DB[name];
+        if(!p) return;
+        document.getElementById('new-p-name').value = name;
+        document.getElementById('new-p-y').value = p.pos[0];
+        document.getElementById('new-p-x').value = p.pos[1];
+        document.getElementById('new-p-desc').value = p.desc || "";
+        updateTempMarker(p.pos[0], p.pos[1]);
+        updateGeneratedCode();
+    }
+
+    function toggleCustomPoint(name) {
+        const safeName = name.replace(/\s|\/|\(|\)/g, '');
+        const el = document.getElementById(`pt-${safeName}`);
+        if(el) {
+            const isActive = el.classList.toggle('active');
+            const customDB = JSON.parse(localStorage.getItem('custom_auriculo_points')) || {};
+            const db = customDB[name] ? customDB : PUNTOS_DB;
+            if(isActive) document.getElementById('protocol-desc').innerHTML = `<div><b>${name}:</b> ${db[name].desc || 'Sin descripción'}</div>`;
+        }
+    }
+
+    function fillSelectors() {
+        const pSel = document.getElementById('p-select');
+        const zSel = document.getElementById('z-select');
+        const aProto = document.getElementById('assoc-proto');
+        const aZona = document.getElementById('assoc-zona');
+        pSel.innerHTML = '';
+        aProto.innerHTML = '<option value="">Ninguno</option>';
+        Object.keys(PROTOCOLOS).sort().forEach(k => {
+            const opt = document.createElement('option');
+            opt.value = k; opt.textContent = k; pSel.appendChild(opt);
+            const opt2 = document.createElement('option');
+            opt2.value = k; opt2.textContent = k; aProto.appendChild(opt2);
+        });
+        zSel.innerHTML = '<option value="">-- Seleccionar zona --</option>';
+        aZona.innerHTML = '<option value="">Ninguna</option>';
+        Object.keys(ZONAS).forEach(k => {
+            const opt = document.createElement('option');
+            opt.value = k; opt.textContent = ZONAS[k].t; zSel.appendChild(opt);
+            const opt2 = document.createElement('option');
+            opt2.value = k; opt2.textContent = k; aZona.appendChild(opt2);
+        });
+    }
+
+    function setLat(lat) {
+        currentLat = lat;
+        document.getElementById('btn-der').classList.toggle('active', lat === 'Derecha');
+        document.getElementById('btn-izq').classList.toggle('active', lat === 'Izquierda');
+    }
+
+    function updateSystem(tipo) {
+        const val = tipo === 'protocolo' ? document.getElementById('p-select').value : document.getElementById('z-select').value;
+        const data = tipo === 'protocolo' ? PROTOCOLOS[val] : ZONAS[val];
+        document.querySelectorAll('.punto-marker').forEach(p => p.classList.remove('active'));
+        if (data) {
+            data.p.forEach(name => {
+                const el = document.getElementById(`pt-${name.replace(/\s|\/|\(|\)/g, '')}`);
+                if(el) el.classList.add('active');
+            });
+            document.getElementById('protocol-desc').innerHTML = data.p.map(n => {
+                const customDB = JSON.parse(localStorage.getItem('custom_auriculo_points')) || {};
+                const d = customDB[n] || PUNTOS_DB[n];
+                return `<div><b>${n}:</b> ${d?.desc || '...'}</div>`;
+            }).join('');
+        }
+    }
+
+    function filterProtocols() {
+        const q = document.getElementById('p-search').value.toLowerCase();
+        Array.from(document.getElementById('p-select').options).forEach(opt => {
+            opt.style.display = opt.text.toLowerCase().includes(q) ? '' : 'none';
+        });
+    }
+
+    // --- HISTORIAL Y EXPORTACIÓN ---
+
+    function filterHistory() {
+        const q = document.getElementById('history-search').value.toLowerCase();
+        renderHistory(q);
+    }
+
+    function saveToHistory() {
+        const entry = { 
+            id: Date.now(), 
+            fecha: new Date().toLocaleString(), 
+            nombre: document.getElementById('p-nombre').value || "S/N", 
+            edad: document.getElementById('p-edad').value || "-", 
+            ciclo: document.getElementById('p-ciclo').value, 
+            protocolo: document.getElementById('p-select').value || "Manual", 
+            lado: currentLat 
+        };
+        historyData.unshift(entry);
+        localStorage.setItem('auriculo_history', JSON.stringify(historyData));
+        renderHistory();
+        alert("Sesión guardada en el historial.");
+    }
+
+    function renderHistory(filter = "") {
+        const tbody = document.getElementById('history-body');
+        const filtered = historyData.filter(h => h.nombre.toLowerCase().includes(filter));
+        
+        tbody.innerHTML = filtered.map(h => `
+            <tr>
+                <td>${h.fecha}</td>
+                <td>${h.nombre}</td>
+                <td>${h.edad}</td>
+                <td>${h.ciclo}</td>
+                <td>${h.protocolo}</td>
+                <td>${h.lado}</td>
+                <td><button class="btn-load" onclick="loadSession(${h.id})">Cargar</button></td>
+            </tr>
+        `).join('');
+    }
+
+    function loadSession(id) {
+        const s = historyData.find(h => h.id === id);
+        if(!s) return;
+        document.getElementById('p-nombre').value = s.nombre;
+        document.getElementById('p-edad').value = s.edad === "-" ? "" : s.edad;
+        document.getElementById('p-ciclo').value = s.ciclo;
+        setLat(s.lado);
+        document.getElementById('p-select').value = s.protocolo;
+        updateSystem('protocolo');
+    }
+
+    function exportHistoryCSV() {
+        if(historyData.length === 0) return alert("No hay datos para exportar.");
+        let csv = "Fecha,Paciente,Edad,Ciclo,Protocolo,Lado\n";
+        historyData.forEach(h => {
+            csv += `"${h.fecha}","${h.nombre}","${h.edad}","${h.ciclo}","${h.protocolo}","${h.lado}"\n`;
+        });
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.setAttribute("download", `Historial_Xian_Auriculo_${new Date().toLocaleDateString()}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
+    function exportPDF() {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        
+        const nombre = document.getElementById('p-nombre').value || "Sin Nombre";
+        const edad = document.getElementById('p-edad').value || "-";
+        const ciclo = document.getElementById('p-ciclo').value;
+        const protocolo = document.getElementById('p-select').value || "Puntos Manuales";
+        const fecha = new Date().toLocaleDateString();
+
+        doc.setFontSize(18);
+        doc.setTextColor(131, 158, 131);
+        doc.text("XIAN AURÍCULO V15 PRO - FICHA CLÍNICA", 20, 20);
+        
+        doc.setDrawColor(200, 200, 200);
+        doc.line(20, 25, 190, 25);
+        
+        doc.setFontSize(11);
+        doc.setTextColor(50, 50, 50);
+        doc.text(`FECHA: ${fecha}`, 20, 35);
+        doc.text(`PACIENTE: ${nombre}`, 20, 45);
+        doc.text(`EDAD: ${edad} años`, 20, 55);
+        doc.text(`CICLO FEMENINO: ${ciclo}`, 120, 55);
+        doc.text(`LATERALIDAD TRATADA: ${currentLat}`, 20, 65);
+        doc.text(`PROTOCOLO APLICADO: ${protocolo}`, 20, 75);
+        
+        doc.setFontSize(12);
+        doc.setTextColor(255, 107, 0);
+        doc.text("PUNTOS SELECCIONADOS Y DESCRIPCIÓN:", 20, 90);
+        
+        doc.setFontSize(9);
+        doc.setTextColor(0, 0, 0);
+        
+        const activos = Array.from(document.querySelectorAll('.punto-marker.active'));
+        let yPos = 100;
+        
+        activos.forEach(marker => {
+            const name = marker.querySelector('.label').innerText;
+            const customDB = JSON.parse(localStorage.getItem('custom_auriculo_points')) || {};
+            const d = customDB[name] || PUNTOS_DB[name];
+            const desc = d ? d.desc : "Sin descripción";
+            
+            const splitDesc = doc.splitTextToSize(`${name}: ${desc}`, 170);
+            doc.text(splitDesc, 20, yPos);
+            yPos += (splitDesc.length * 5) + 2;
+            
+            if(yPos > 270) { doc.addPage(); yPos = 20; }
+        });
+
+        doc.save(`Ficha_${nombre.replace(/\s/g, '_')}_${fecha}.pdf`);
+    }
+
+    window.onload = () => {
+        fillSelectors();
+        renderMarkers();
+        renderHistory();
+        renderCustomPointsList();
+        document.getElementById('date-display').textContent = new Date().toLocaleDateString();
+    };
+</script>
+</body>
+</html>
