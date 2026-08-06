@@ -79,6 +79,12 @@
         .section-header.green  { background: rgba(61,92,54,0.06); color: var(--primary); border-left: 1.5px solid var(--primary); }
         .section-header.orange { background: rgba(158,124,82,0.06); color: var(--accent); border-left: 1.5px solid var(--accent); }
         .section-header.dark   { background: rgba(26,26,26,0.04); color: var(--dark); border-left: 1.5px solid var(--dark); }
+        .mtc-collapsible { margin: 4px 0 6px; }
+        .mtc-collapsible > summary.section-header { margin: 0; }
+        .mtc-collapsible > summary::-webkit-details-marker { display: none; }
+        .mtc-collapse-arrow { transition: transform 0.15s ease; font-size: 0.7rem; }
+        .mtc-collapsible[open] .mtc-collapse-arrow { transform: rotate(90deg); }
+        .mtc-collapsible > .mtc-diag-box { margin-top: 6px; }
         .panel-title::before { content: ''; display: inline-block; width: 1.5px; height: 10px; background: var(--accent); border-radius: 2px; flex-shrink: 0; opacity: 0.7; }
 
         /* FIELDS */
@@ -689,13 +695,17 @@
             </div>
             <div class="antec-field">
                 <label for="p-obs-generales">Observaciones generales</label>
-                <textarea id="p-obs-generales" style="min-height:48px;" placeholder="Ej: Paciente sensible, tendencia vasovagal..."></textarea>
+                <textarea id="p-obs-generales" style="min-height:110px;" placeholder="Ej: Paciente sensible, tendencia vasovagal..."></textarea>
             </div>
         </div>
 
         
         <hr class="divider">
-        <div class="section-header" style="background:linear-gradient(135deg,#5b2d8e,#8e44ad);color:#fff;">🫁 Diagnóstico MTC</div>
+        <details class="mtc-collapsible" id="mtc-collapsible">
+        <summary class="section-header" style="background:linear-gradient(135deg,#5b2d8e,#8e44ad);color:#fff;cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;">
+            <span>🫁 Diagnóstico MTC</span>
+            <span class="mtc-collapse-arrow" aria-hidden="true">▸</span>
+        </summary>
         <div class="mtc-diag-box">
             <div>
                 <div class="mtc-diag-title">🫀 Pulso</div>
@@ -754,6 +764,7 @@
                 </div>
             </div>
         </div>
+        </details>
 
 <hr class="divider">
         <div class="section-header dark">📊 Sesión Actual</div>
@@ -1098,6 +1109,7 @@
 
     /* Estado MTC */
     let mtcData = { pulso: [], cuerpo: [], saburra: [], patron: [] };
+    let lastMtcDiagnostico = null; // { main:{nombre,organos,principio,tratamiento,recomendaciones}, diff:{nombre,principio}|null }
 
     function toggleMTC(el, tipo, valor) {
         el.classList.toggle('active');
@@ -1132,7 +1144,10 @@
 
     function resetMtcData() {
         mtcData = { pulso: [], cuerpo: [], saburra: [], patron: [] };
+        lastMtcDiagnostico = null;
         document.querySelectorAll('.pulso-chip,.lengua-chip').forEach(el => el.classList.remove('active','active-rojo','active-palido','active-morado'));
+        const resEl = document.getElementById('mtc-diag-resultado');
+        if (resEl) { resEl.style.display = 'none'; resEl.innerHTML = ''; }
     }
 
     /* ── IMPRESIÓN ── */
@@ -3419,6 +3434,16 @@ const PROTOCOLOS = {
             Object.keys(puntosAActivar).forEach(n => {
                 const d = getCustomDB()[n] || PUNTOS_DB[n];
                 const div = document.createElement('div');
+                div.className = 'protocolo-punto-card';
+                div.setAttribute('data-punto', n);
+                div.style.position = 'relative';
+                const rmBtnProto = document.createElement('button');
+                rmBtnProto.type = 'button';
+                rmBtnProto.textContent = '✕ quitar';
+                rmBtnProto.title = `Quitar "${n}" de esta sesión`;
+                rmBtnProto.style.cssText = 'float:right;background:none;border:1px solid var(--border);border-radius:20px;cursor:pointer;color:var(--text-muted);font-size:0.62rem;padding:2px 8px;';
+                rmBtnProto.onclick = () => quitarPuntoDeSesion(n);
+                div.appendChild(rmBtnProto);
                 const b = document.createElement('b'); b.textContent = n + ': '; div.appendChild(b);
                 // Badge de escuela en análisis libre
             const escKeyL = ESCUELAS[name] || 'china';
@@ -3517,6 +3542,16 @@ const PROTOCOLOS = {
                 data.p.forEach(n => {
                     const d = getCustomDB()[n] || PUNTOS_DB[n];
                     const div = document.createElement('div');
+                    div.className = 'protocolo-punto-card';
+                    div.setAttribute('data-punto', n);
+                    div.style.position = 'relative';
+                    const rmBtnZona = document.createElement('button');
+                    rmBtnZona.type = 'button';
+                    rmBtnZona.textContent = '✕ quitar';
+                    rmBtnZona.title = `Quitar "${n}" de esta sesión`;
+                    rmBtnZona.style.cssText = 'float:right;background:none;border:1px solid var(--border);border-radius:20px;cursor:pointer;color:var(--text-muted);font-size:0.62rem;padding:2px 8px;';
+                    rmBtnZona.onclick = () => quitarPuntoDeSesion(n);
+                    div.appendChild(rmBtnZona);
                     const b = document.createElement('b'); b.textContent = n + ': '; div.appendChild(b);
                     const escKeyP = ESCUELAS[n] || 'china';
                 const escInfoP = ESCUELA_LABELS[escKeyP] || ESCUELA_LABELS.china;
@@ -3768,10 +3803,33 @@ const PROTOCOLOS = {
                 const name = marker.getAttribute('data-name');
                 const tag = document.createElement('span');
                 tag.className = 'active-point-tag' + (marker.classList.contains('triangulo') ? ' tri' : '');
-                tag.textContent = name;
+                tag.style.cssText = 'display:inline-flex;align-items:center;gap:4px;';
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = name;
+                tag.appendChild(nameSpan);
+                const rmBtn = document.createElement('button');
+                rmBtn.type = 'button';
+                rmBtn.textContent = '×';
+                rmBtn.title = `Quitar "${name}" de esta sesión`;
+                rmBtn.setAttribute('aria-label', `Quitar ${name}`);
+                rmBtn.style.cssText = 'background:none;border:none;cursor:pointer;color:inherit;opacity:0.6;font-size:0.95em;line-height:1;padding:0 0 0 2px;font-weight:700;';
+                rmBtn.onmouseenter = () => { rmBtn.style.opacity = '1'; };
+                rmBtn.onmouseleave = () => { rmBtn.style.opacity = '0.6'; };
+                rmBtn.onclick = (e) => { e.stopPropagation(); quitarPuntoDeSesion(name); };
+                tag.appendChild(rmBtn);
                 tagsContainer.appendChild(tag);
             });
         }
+    }
+
+    /* ── QUITAR UN PUNTO PUNTUAL DE LA SESIÓN (sin borrar el protocolo/zona completo) ── */
+    function quitarPuntoDeSesion(name) {
+        const el = document.getElementById(`pt-${safeName(name)}`);
+        if (el) el.classList.remove('active');
+        document.querySelectorAll(`.protocolo-punto-card[data-punto="${(window.CSS && CSS.escape) ? CSS.escape(name) : name}"]`).forEach(c => c.remove());
+        updateSessionSummary();
+        setTimeout(ajustarEtiquetasSuperpuestas, 10);
+        showToast(`"${name}" quitado de esta sesión.`, 'info');
     }
 
     /* ── RENDER DASHBOARD ── */
@@ -3904,6 +3962,16 @@ const PROTOCOLOS = {
             const d = customDB[n] || PUNTOS_DB[n];
             const score = puntoScore[n].count;
             const div = document.createElement('div');
+            div.className = 'protocolo-punto-card';
+            div.setAttribute('data-punto', n);
+            div.style.position = 'relative';
+            const rmBtnAi = document.createElement('button');
+            rmBtnAi.type = 'button';
+            rmBtnAi.textContent = '✕ quitar';
+            rmBtnAi.title = `Quitar "${n}" de esta sesión`;
+            rmBtnAi.style.cssText = 'float:right;background:none;border:1px solid var(--border);border-radius:20px;cursor:pointer;color:var(--text-muted);font-size:0.62rem;padding:2px 8px;';
+            rmBtnAi.onclick = () => quitarPuntoDeSesion(n);
+            div.appendChild(rmBtnAi);
             // Badge de escuela
             const escKey = ESCUELAS[n] || 'china';
             const escInfo = ESCUELA_LABELS[escKey] || ESCUELA_LABELS.china;
@@ -4278,6 +4346,12 @@ const PROTOCOLOS = {
             preguntas: BNE_DB[s].preguntas
         }));
         const mtcDiag = getMtcResumen();
+        const antecActual = {
+            patologias: document.getElementById('p-patologias') ? document.getElementById('p-patologias').value.trim() : '',
+            alergias:   document.getElementById('p-alergias') ? document.getElementById('p-alergias').value.trim() : '',
+            medicacion: document.getElementById('p-medicacion') ? document.getElementById('p-medicacion').value.trim() : '',
+            obs:        document.getElementById('p-obs-generales') ? document.getElementById('p-obs-generales').value.trim() : ''
+        };
         const entry = {
             id:        Date.now(),
             fecha:     new Date().toLocaleString('es-AR'),
@@ -4295,7 +4369,11 @@ const PROTOCOLOS = {
             tecnicas,
             descripcionLibre,
             dietoInfo,
-            bneInfo
+            bneInfo,
+            mtcSignos: { pulso: mtcData.pulso.slice(), cuerpo: mtcData.cuerpo.slice(), saburra: mtcData.saburra.slice(), patron: mtcData.patron.slice() },
+            mtcResumen: mtcDiag,
+            mtcDiagnostico: lastMtcDiagnostico,
+            antecedentesSesion: antecActual
         };
         saveAntecedentes(nombre);
         historyData.unshift(entry);
@@ -5030,6 +5108,41 @@ const PROTOCOLOS = {
             doc.text(dTxt, 14, y); y += 8;
         }
 
+        // Diagnóstico MTC (pulso / lengua / saburra / patrón + patrón calculado)
+        const mtcResumenTxt = getMtcResumen();
+        if (mtcResumenTxt || (lastMtcDiagnostico && lastMtcDiagnostico.main)) {
+            y = pdf_checkPage(doc, y, 16);
+            y = pdf_section(doc, y, W, 'Diagnóstico MTC');
+            if (mtcResumenTxt) {
+                doc.setFontSize(7.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(...C.slate);
+                const spSignos = doc.splitTextToSize(mtcResumenTxt, W - 28);
+                y = pdf_checkPage(doc, y, spSignos.length * 4.2 + 3);
+                doc.text(spSignos, 14, y); y += spSignos.length * 4.2 + 3;
+            }
+            if (lastMtcDiagnostico && lastMtcDiagnostico.main) {
+                const m = lastMtcDiagnostico.main;
+                y = pdf_checkPage(doc, y, 22);
+                doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(...C.ink);
+                doc.text(`Patrón principal: ${m.nombre}`, 14, y); y += 4.5;
+                doc.setFontSize(7); doc.setFont('helvetica', 'normal'); doc.setTextColor(...C.slate);
+                const spOrg = doc.splitTextToSize(`Órganos: ${m.organos}   |   Principio: ${m.principio}`, W - 28);
+                y = pdf_checkPage(doc, y, spOrg.length * 4 + 2);
+                doc.text(spOrg, 14, y); y += spOrg.length * 4 + 2;
+                const spTrat = doc.splitTextToSize(`Puntos sugeridos: ${m.tratamiento}`, W - 28);
+                y = pdf_checkPage(doc, y, spTrat.length * 4 + 2);
+                doc.text(spTrat, 14, y); y += spTrat.length * 4 + 2;
+                const spRec = doc.splitTextToSize(`Recomendaciones: ${m.recomendaciones}`, W - 28);
+                y = pdf_checkPage(doc, y, spRec.length * 4 + 3);
+                doc.text(spRec, 14, y); y += spRec.length * 4 + 3;
+                if (lastMtcDiagnostico.diff) {
+                    doc.setFontSize(7); doc.setFont('helvetica', 'italic'); doc.setTextColor(...C.warm);
+                    const spDiff = doc.splitTextToSize(`Diferencial: ${lastMtcDiagnostico.diff.nombre} — ${lastMtcDiagnostico.diff.principio}`, W - 28);
+                    y = pdf_checkPage(doc, y, spDiff.length * 4 + 4);
+                    doc.text(spDiff, 14, y); y += spDiff.length * 4 + 4;
+                }
+            }
+        }
+
         // Protocolos
         y = pdf_checkPage(doc, y, 14);
         y = pdf_section(doc, y, W, 'Síntomas / Protocolos tratados');
@@ -5303,6 +5416,40 @@ const PROTOCOLOS = {
                     doc.setTextColor(...(pct >= 0 ? C.accent : C.alert));
                 } else { doc.setTextColor(...C.slate); }
                 doc.text(dTxt, 14, y); y += 8;
+            }
+
+            // Diagnóstico MTC (pulso / lengua / saburra / patrón + patrón calculado)
+            if (s.mtcResumen || (s.mtcDiagnostico && s.mtcDiagnostico.main)) {
+                y = chk(y, 16);
+                y = pdf_section(doc, y, W, 'Diagnóstico MTC');
+                if (s.mtcResumen) {
+                    doc.setFontSize(7.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(...C.slate);
+                    const spSignos = doc.splitTextToSize(s.mtcResumen, W - 28);
+                    y = chk(y, spSignos.length * 4.2 + 3);
+                    doc.text(spSignos, 14, y); y += spSignos.length * 4.2 + 3;
+                }
+                if (s.mtcDiagnostico && s.mtcDiagnostico.main) {
+                    const m = s.mtcDiagnostico.main;
+                    y = chk(y, 22);
+                    doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(...C.ink);
+                    doc.text(`Patrón principal: ${m.nombre}`, 14, y); y += 4.5;
+                    doc.setFontSize(7); doc.setFont('helvetica', 'normal'); doc.setTextColor(...C.slate);
+                    const spOrg = doc.splitTextToSize(`Órganos: ${m.organos}   |   Principio: ${m.principio}`, W - 28);
+                    y = chk(y, spOrg.length * 4 + 2);
+                    doc.text(spOrg, 14, y); y += spOrg.length * 4 + 2;
+                    const spTrat = doc.splitTextToSize(`Puntos sugeridos: ${m.tratamiento}`, W - 28);
+                    y = chk(y, spTrat.length * 4 + 2);
+                    doc.text(spTrat, 14, y); y += spTrat.length * 4 + 2;
+                    const spRec = doc.splitTextToSize(`Recomendaciones: ${m.recomendaciones}`, W - 28);
+                    y = chk(y, spRec.length * 4 + 3);
+                    doc.text(spRec, 14, y); y += spRec.length * 4 + 3;
+                    if (s.mtcDiagnostico.diff) {
+                        doc.setFontSize(7); doc.setFont('helvetica', 'italic'); doc.setTextColor(...C.warm);
+                        const spDiff = doc.splitTextToSize(`Diferencial: ${s.mtcDiagnostico.diff.nombre} — ${s.mtcDiagnostico.diff.principio}`, W - 28);
+                        y = chk(y, spDiff.length * 4 + 4);
+                        doc.text(spDiff, 14, y); y += spDiff.length * 4 + 4;
+                    }
+                }
             }
 
             // Descripción libre del paciente
@@ -5757,10 +5904,15 @@ function generarDiagnosticoMTC() {
 
   if (!scored.length) {
     resultado.innerHTML = '<em style="color:var(--text-muted);">La combinación seleccionada no coincide con ningún patrón. Agregá más signos.</em>';
+    lastMtcDiagnostico = null;
     return;
   }
 
   const main = scored[0], diff = scored[1];
+  lastMtcDiagnostico = {
+    main: { nombre: main.nombre, organos: main.organos, principio: main.principio, tratamiento: main.tratamiento, recomendaciones: main.recomendaciones },
+    diff: diff ? { nombre: diff.nombre, principio: diff.principio } : null
+  };
   let html = `
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:7px;">
       <span style="background:var(--primary);color:#fff;font-size:0.6rem;font-weight:700;padding:2px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:0.5px;">Principal</span>
