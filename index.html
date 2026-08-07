@@ -821,7 +821,7 @@
         </div>
         <div class="desc-section">
             <span class="desc-title">Ubicación y función combinada</span>
-            <div id="protocol-desc" aria-live="polite"><div><b>Pulmón: </b>Respiratorio, piel, adicciones.</div><div><b>Corazón: </b>Circulación, ansiedad.</div><div><b>Riñón: </b>Huesos, audición.</div><div><b>Hígado: </b>Metabolismo, músculos.</div><div><b>Estómago: </b>Digestión, peso.</div><div><b>Bazo: </b>Sangre, digestión.</div><div><b>Vesícula: </b>Cálculos, migraña.</div><div><b>Páncreas: </b>Diabetes.</div><div><b>Vejiga: </b>Sistema urinario.</div><div><b>Intestino Grueso: </b>Digestivo.</div><div><b>Intestino Delgado: </b>Absorción, diarrea crónica, meteorismo.</div><div><b>Triple Recalentador: </b>Metabolismo general.</div><div><b>Cerebro (Concha): </b>Respiratorio, piel, adicciones.</div><div><b>Diafragma: </b>Hipo, espasmos respiratorios, ansiedad respiratoria.</div><div><b>Cardias: </b>...</div><div><b>Tiroides: </b>Hipotiroidismo, hipertiroidismo, bocio.</div><div><b>Útero / Genitales: </b>Disfunciones ginecológicas, menstruación, fertilidad.</div><div><b>Próstata / Genitales M: </b>Próstata, disfunción eréctil, genitales masculinos.</div><div><b>Ovario: </b>Función ovárica, dismenorrea, SOP, fertilidad femenina.</div><div><b>Pulmón 2: </b>tratar afecciones respiratorias, regular los líquidos corporales y calmar el sistema nervioso.</div></div>
+            <div id="protocol-desc" aria-live="polite"></div>
         </div>
 
         <!-- RESUMEN SESIÓN ACTIVA -->
@@ -844,7 +844,7 @@
 
             <div>
                 <div style="font-size:0.7rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:5px;">Puntos en uso</div>
-                <div class="active-points-list" id="active-points-tags"><span class="active-point-tag">Pulmón</span><span class="active-point-tag">Corazón</span><span class="active-point-tag">Riñón</span><span class="active-point-tag">Hígado</span><span class="active-point-tag">Estómago</span><span class="active-point-tag">Bazo</span><span class="active-point-tag">Vesícula</span><span class="active-point-tag">Páncreas</span><span class="active-point-tag">Vejiga</span><span class="active-point-tag">Intestino Grueso</span><span class="active-point-tag">Intestino Delgado</span><span class="active-point-tag">Triple Recalentador</span><span class="active-point-tag">Cerebro (Concha)</span><span class="active-point-tag">Diafragma</span><span class="active-point-tag">Cardias</span><span class="active-point-tag">Útero / Genitales</span><span class="active-point-tag">Próstata / Genitales M</span><span class="active-point-tag">Tiroides</span><span class="active-point-tag">Ovario</span><span class="active-point-tag">Pulmón 2</span></div>
+                <div class="active-points-list" id="active-points-tags"><span style="color:var(--text-muted);font-size:0.75rem;font-style:italic;">Sin puntos activos</span></div>
             </div>
 
             <!-- FLORES DE BACH RESULTADO -->
@@ -3446,6 +3446,7 @@ const PROTOCOLOS = {
             if (cloudAntec) { try { localStorage.setItem('auriculo_antecedentes', cloudAntec); } catch(e) {} }
         }
         historyData = storageGet('auriculo_history') || [];
+        resetFormularioSilencioso();
         const syncTxtEl = document.getElementById('syncStatusTxtAuriculo');
         if (syncTxtEl) syncTxtEl.textContent = syncUrl ? 'Google Sheets conectado' : 'Conectar Google Sheets';
         fillSelectors();
@@ -4436,6 +4437,15 @@ const PROTOCOLOS = {
     function limpiarHojaCompleta() {
         resetMtcData();
         if (!confirm('¿Limpiar toda la hoja para atender un nuevo paciente? Los datos guardados no se borran.')) return;
+        resetFormularioSilencioso();
+        document.getElementById('p-nombre').focus();
+        showToast('🧹 Hoja limpia. Listo para el próximo paciente.', 'success');
+    }
+
+    /* ── RESETEO SILENCIOSO (usado también al abrir la app) ──
+       Limpia todos los campos del formulario/sesión activa sin tocar
+       el historial guardado ni pedir confirmación. */
+    function resetFormularioSilencioso() {
         // Datos del paciente
         ['p-nombre','p-telefono','p-edad','p-nota','p-proxima','obs-rapida',
          'p-patologias','p-alergias','p-medicacion','p-obs-generales',
@@ -4446,12 +4456,16 @@ const PROTOCOLOS = {
         const ciclo = document.getElementById('p-ciclo');
         if (ciclo) ciclo.value = '-';
         // Puntos y checkboxes
-        clearAllPoints();
+        document.querySelectorAll('.punto-marker.active').forEach(p => p.classList.remove('active'));
+        document.querySelectorAll('#p-checklist input[type="checkbox"]').forEach(cb => cb.checked = false);
+        const zSel = document.getElementById('z-select');
+        if (zSel) zSel.value = "";
+        const pd = document.getElementById('protocol-desc');
+        if (pd) pd.innerHTML = "";
         aiAnalisisEstado = { texto: null, maxPuntos: null, excluidos: new Set() };
         clearTecnicas && clearTecnicas();
         resetDolorScale && resetDolorScale();
         setLat && setLat('Derecha');
-        document.querySelectorAll('#p-checklist input[type="checkbox"]').forEach(function(cb){ cb.checked = false; });
         // Resultados flores
         ['flores-resultado','flores-inline'].forEach(function(id){
             const el = document.getElementById(id);
@@ -4460,8 +4474,7 @@ const PROTOCOLOS = {
         // Warning
         const w = document.getElementById('conflict-warning');
         if (w) w.classList.remove('visible');
-        document.getElementById('p-nombre').focus();
-        showToast('🧹 Hoja limpia. Listo para el próximo paciente.', 'success');
+        updateSessionSummary();
     }
 
     /* ── PRIMERA CITA ── */
