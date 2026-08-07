@@ -1011,6 +1011,10 @@
     <div class="history-controls">
         <h3>📋 Historial de sesiones</h3>
         <input type="text" id="history-search" class="search-history" placeholder="🔍 Buscar por nombre..." onkeyup="filterHistory()">
+        <button class="btn btn-ghost btn-sm" style="width:auto;padding:7px 12px;" id="btnSyncConfigAuriculo" onclick="configurarSyncUrlAuriculo()">🔗 <span id="syncStatusTxtAuriculo">Conectar Google Sheets</span></button>
+        <button class="btn btn-ghost btn-sm" style="width:auto;padding:7px 12px;" onclick="probarConexionAuriculo()">Probar conexión</button>
+        <button class="btn btn-ghost btn-sm" style="width:auto;padding:7px 12px;" onclick="subirDatosAhoraAuriculo()">⬆ Subir mis datos</button>
+        <button class="btn btn-ghost btn-sm" style="width:auto;padding:7px 12px;" onclick="traerDatosAhoraAuriculo()">⬇ Traer de Sheets</button>
         <button class="btn btn-primary btn-sm" style="width:auto;padding:7px 14px;" onclick="exportHistoryCSV()">📊 Exportar CSV</button>
     </div>
     <table class="history-table" role="table">
@@ -1110,6 +1114,7 @@
     /* Estado MTC */
     let mtcData = { pulso: [], cuerpo: [], saburra: [], patron: [] };
     let lastMtcDiagnostico = null; // { main:{nombre,organos,principio,tratamiento,recomendaciones}, diff:{nombre,principio}|null }
+    let aiAnalisisEstado = { texto: null, maxPuntos: null, excluidos: new Set() }; // recuerda la última consulta de "Analizar y activar puntos" para poder sumar más sin resetear lo ya ajustado
 
     function toggleMTC(el, tipo, valor) {
         el.classList.toggle('active');
@@ -1195,7 +1200,138 @@
 
     /* ── STORAGE ── */
     function storageGet(key) { try { return JSON.parse(localStorage.getItem(key)) || null; } catch(e) { return null; } }
-    function storageSet(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); return true; } catch(e) { showToast('Error al guardar.', 'error'); return false; } }
+    function storageSet(key, val) {
+        try {
+            localStorage.setItem(key, JSON.stringify(val));
+            if (syncUrl) syncSet(key, JSON.stringify(val));
+            return true;
+        } catch(e) { showToast('Error al guardar.', 'error'); return false; }
+    }
+
+    /* ══════════════════════════════════════════
+       SINCRONIZACIÓN CON GOOGLE SHEETS (misma hoja que Gastos Mensuales)
+       Mismo mecanismo JSONP + form oculto para esquivar CORS de Apps Script.
+       ══════════════════════════════════════════ */
+    const SYNC_URL_KEY = 'xian-auriculo:sync-url';
+    let syncUrl = null;
+    try { syncUrl = localStorage.getItem(SYNC_URL_KEY) || null; } catch(e) { syncUrl = null; }
+
+    let jsonpContadorAuriculo = 0;
+    function jsonpRequestAuriculo(url, timeoutMs = 8000) {
+        return new Promise((resolve, reject) => {
+            jsonpContadorAuriculo++;
+            const cbName = `auJsonp${jsonpContadorAuriculo}_${Date.now()}`;
+            const script = document.createElement('script');
+            let terminado = false;
+            const limpiar = () => { try { delete window[cbName]; } catch(e) {} if (script.parentNode) script.parentNode.removeChild(script); };
+            const timer = setTimeout(() => { if (!terminado) { terminado = true; limpiar(); reject(new Error('timeout esperando respuesta')); } }, timeoutMs);
+            window[cbName] = (data) => { if (terminado) return; terminado = true; clearTimeout(timer); limpiar(); resolve(data); };
+            script.onerror = () => { if (terminado) return; terminado = true; clearTimeout(timer); limpiar(); reject(new Error('no se pudo cargar el script (revisá la URL o el deploy)')); };
+            const sep = url.includes('?') ? '&' : '?';
+            script.src = `${url}${sep}callback=${cbName}`;
+            document.head.appendChild(script);
+        });
+    }
+
+    async function syncGetAuriculo(key) {
+        if (!syncUrl) return null;
+        try {
+            const json = await jsonpRequestAuriculo(`${syncUrl}?key=${encodeURIComponent(key)}`);
+            return (json && json.value) ? json.value : null;
+        } catch(e) { return null; }
+    }
+
+    function syncSet(key, value) {
+        if (!syncUrl) return;
+        try {
+            const frameName = 'auSyncFrame' + Date.now() + Math.random().toString(36).slice(2, 6);
+            const iframe = document.createElement('iframe');
+            iframe.name = frameName;
+            iframe.style.display = 'none';
+            document.body.appendChild(iframe);
+
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = syncUrl;
+            form.target = frameName;
+            form.style.display = 'none';
+
+            const inputKey = document.createElement('input');
+            inputKey.type = 'hidden'; inputKey.name = 'key'; inputKey.value = key;
+            const inputValue = document.createElement('input');
+            inputValue.type = 'hidden'; inputValue.name = 'value'; inputValue.value = value;
+            form.appendChild(inputKey);
+            form.appendChild(inputValue);
+            document.body.appendChild(form);
+            form.submit();
+
+            setTimeout(() => {
+                if (form.parentNode) form.parentNode.removeChild(form);
+                if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+            }, 6000);
+        } catch(e) { /* queda igual guardado en localStorage aunque esto falle */ }
+    }
+
+    async function cloudOrLocalGetAuriculo(key) {
+        if (syncUrl) {
+            const v = await syncGetAuriculo(key);
+            if (v) { try { localStorage.setItem(key, v); } catch(e) {} return v; }
+        }
+        try { return localStorage.getItem(key); } catch(e) { return null; }
+    }
+
+    function configurarSyncUrlAuriculo() {
+        const actual = syncUrl || '';
+        const url = prompt('Pegá acá la misma URL de Google Apps Script que usás en Gastos Mensuales (Web App). Dejalo vacío y aceptá para desconectar.', actual);
+        if (url === null) return; // canceló
+        const limpio = url.trim();
+        try {
+            if (limpio) { localStorage.setItem(SYNC_URL_KEY, limpio); }
+            else { localStorage.removeItem(SYNC_URL_KEY); }
+        } catch(e) {}
+        alert(limpio ? 'Listo, quedó conectado a tu Google Sheet. La página se va a recargar.' : 'Se desconectó la sincronización. La página se va a recargar.');
+        location.reload();
+    }
+
+    async function probarConexionAuriculo() {
+        if (!syncUrl) { alert('Primero conectá una URL con el botón "🔗 Conectar Google Sheets".'); return; }
+        try {
+            await jsonpRequestAuriculo(`${syncUrl}?key=${encodeURIComponent('auriculo_ping')}`);
+            alert('✅ Conexión OK. La URL responde correctamente.');
+        } catch(e) {
+            alert('❌ No se pudo conectar: ' + (e && e.message ? e.message : e));
+        }
+    }
+
+    function subirDatosAhoraAuriculo() {
+        if (!syncUrl) { alert('Primero conectá una URL con el botón "🔗 Conectar Google Sheets".'); return; }
+        if (!confirm('Esto va a subir los pacientes y sesiones de ESTE dispositivo a tu Google Sheet, pisando lo que haya ahí. ¿Seguimos?')) return;
+        ['auriculo_history', 'auriculo_antecedentes', 'custom_auriculo_points', 'fin_ingresos', 'fin_gastos'].forEach(key => {
+            const val = localStorage.getItem(key);
+            if (val) syncSet(key, val);
+        });
+        showToast('Subiendo a Google Sheets...', 'info');
+        setTimeout(() => { alert('Listo, ya debería estar subido. Probá abrir la app en el otro dispositivo y tocá "Traer de Google Sheets".'); }, 2500);
+    }
+
+    async function traerDatosAhoraAuriculo() {
+        if (!syncUrl) { alert('Primero conectá una URL con el botón "🔗 Conectar Google Sheets".'); return; }
+        if (!confirm('Esto va a reemplazar los pacientes y sesiones de ESTE dispositivo por lo que haya en tu Google Sheet. ¿Seguimos?')) return;
+        try {
+            let huboAlgo = false;
+            for (const key of ['auriculo_history', 'auriculo_antecedentes', 'custom_auriculo_points', 'fin_ingresos', 'fin_gastos']) {
+                const v = await syncGetAuriculo(key);
+                if (v) { try { localStorage.setItem(key, v); huboAlgo = true; } catch(e) {} }
+            }
+            historyData = storageGet('auriculo_history') || [];
+            renderHistory();
+            renderCustomPointsList();
+            renderDashboard();
+            alert(huboAlgo ? 'Listo, se trajeron los datos de Google Sheets.' : 'No había datos guardados todavía en tu Google Sheet.');
+        } catch(err) {
+            alert('❌ Error al traer los datos: ' + (err && err.message ? err.message : err));
+        }
+    }
     function getCustomDB() { return storageGet('custom_auriculo_points') || {}; }
     function saveCustomDB(db) { return storageSet('custom_auriculo_points', db); }
 
@@ -3302,8 +3438,16 @@ const PROTOCOLOS = {
     function safeName(name) { return name.replace(/[\s\/\(\)]/g, ''); }
 
     /* ── INIT ── */
-    document.addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('DOMContentLoaded', async () => {
+        if (syncUrl) {
+            const cloudHistory = await cloudOrLocalGetAuriculo('auriculo_history');
+            if (cloudHistory) { try { localStorage.setItem('auriculo_history', cloudHistory); } catch(e) {} }
+            const cloudAntec = await cloudOrLocalGetAuriculo('auriculo_antecedentes');
+            if (cloudAntec) { try { localStorage.setItem('auriculo_antecedentes', cloudAntec); } catch(e) {} }
+        }
         historyData = storageGet('auriculo_history') || [];
+        const syncTxtEl = document.getElementById('syncStatusTxtAuriculo');
+        if (syncTxtEl) syncTxtEl.textContent = syncUrl ? 'Google Sheets conectado' : 'Conectar Google Sheets';
         fillSelectors();
         renderMarkers();
         renderHistory();
@@ -3827,6 +3971,7 @@ const PROTOCOLOS = {
         const el = document.getElementById(`pt-${safeName(name)}`);
         if (el) el.classList.remove('active');
         document.querySelectorAll(`.protocolo-punto-card[data-punto="${(window.CSS && CSS.escape) ? CSS.escape(name) : name}"]`).forEach(c => c.remove());
+        aiAnalisisEstado.excluidos.add(name);
         updateSessionSummary();
         setTimeout(ajustarEtiquetasSuperpuestas, 10);
         showToast(`"${name}" quitado de esta sesión.`, 'info');
@@ -3872,7 +4017,8 @@ const PROTOCOLOS = {
 
     /* ── AI TEXT ── */
     function analyzeTextFree() {
-        const text = document.getElementById('ai-textarea').value.toLowerCase();
+        const textoRaw = document.getElementById('ai-textarea').value;
+        const text = textoRaw.toLowerCase();
         if (!text.trim()) { showToast('Por favor escribí algo para analizar.', 'info'); return; }
 
         // 1. Detectar protocolos que matchean
@@ -3904,7 +4050,22 @@ const PROTOCOLOS = {
         const MAX_PUNTOS_DEFAULT = 8;
         const maxEl = document.getElementById('ai-max-puntos');
         const maxPuntos = maxEl ? parseInt(maxEl.value) || MAX_PUNTOS_DEFAULT : MAX_PUNTOS_DEFAULT;
-        const puntosFinales = puntosOrdenados.slice(0, maxPuntos).map(p => p.nombre);
+
+        // 4b. ¿Es un reintento de la misma consulta (mismo texto y mismo "Máx. puntos")?
+        //     Si es así, respetamos los puntos que la persona sacó con "✕ quitar" y
+        //     completamos el cupo configurado con los siguientes candidatos del ranking
+        //     (si sacó 2, se suman 2 nuevos; si sacó 1, se suma 1 nuevo).
+        const esMismaConsulta = aiAnalisisEstado.texto === textoRaw && aiAnalisisEstado.maxPuntos === maxPuntos;
+        if (!esMismaConsulta) {
+            aiAnalisisEstado = { texto: textoRaw, maxPuntos, excluidos: new Set() };
+        }
+        aiAnalisisEstado.texto = textoRaw;
+        aiAnalisisEstado.maxPuntos = maxPuntos;
+
+        const puntosFinales = puntosOrdenados
+            .filter(p => !aiAnalisisEstado.excluidos.has(p.nombre))
+            .slice(0, maxPuntos)
+            .map(p => p.nombre);
 
         // 5. Marcar checkboxes de los protocolos detectados
         document.querySelectorAll('#p-checklist input[type="checkbox"]').forEach(cb => {
@@ -3959,46 +4120,7 @@ const PROTOCOLOS = {
 
         // Puntos con badge de cuántos protocolos los incluyen
         puntosFinales.forEach(n => {
-            const d = customDB[n] || PUNTOS_DB[n];
-            const score = puntoScore[n].count;
-            const div = document.createElement('div');
-            div.className = 'protocolo-punto-card';
-            div.setAttribute('data-punto', n);
-            div.style.position = 'relative';
-            const rmBtnAi = document.createElement('button');
-            rmBtnAi.type = 'button';
-            rmBtnAi.textContent = '✕ quitar';
-            rmBtnAi.title = `Quitar "${n}" de esta sesión`;
-            rmBtnAi.style.cssText = 'float:right;background:none;border:1px solid var(--border);border-radius:20px;cursor:pointer;color:var(--text-muted);font-size:0.62rem;padding:2px 8px;';
-            rmBtnAi.onclick = () => quitarPuntoDeSesion(n);
-            div.appendChild(rmBtnAi);
-            // Badge de escuela
-            const escKey = ESCUELAS[n] || 'china';
-            const escInfo = ESCUELA_LABELS[escKey] || ESCUELA_LABELS.china;
-            const escSpan = document.createElement('span');
-            escSpan.className = 'escuela-badge ' + escInfo.css;
-            escSpan.textContent = escInfo.label;
-            div.appendChild(escSpan);
-            div.appendChild(document.createElement('br'));
-            const b = document.createElement('b'); b.textContent = n + ': '; div.appendChild(b);
-            div.appendChild(document.createTextNode((d?.desc || '...') + ' '));
-            // Contraindicaciones
-            const contrasCard = CONTRAINDICACIONES[n];
-            if (contrasCard && contrasCard.length > 0) {
-                const cDiv = document.createElement('div');
-                cDiv.className = 'contra-box visible';
-                cDiv.style.marginTop = '4px';
-                cDiv.innerHTML = '🚫 <strong>Contraindicaciones:</strong> ' + contrasCard.join(' | ');
-                div.appendChild(cDiv);
-            }
-            if (score > 1) {
-                const badge = document.createElement('span');
-                badge.style.cssText = 'background:var(--accent);color:white;font-size:0.65rem;font-weight:700;padding:1px 6px;border-radius:20px;margin-left:3px;';
-                badge.textContent = `×${score}`;
-                badge.title = `Aparece en ${score} de los protocolos detectados`;
-                div.appendChild(badge);
-            }
-            descContainer.appendChild(div);
+            descContainer.appendChild(crearTarjetaPuntoIA(n, customDB, puntoScore));
         });
 
         // Si hay puntos excluidos, mostrar nota
@@ -4068,6 +4190,50 @@ const PROTOCOLOS = {
         setTimeout(ajustarEtiquetasSuperpuestas, 10);
         setTimeout(updateSessionSummary, 15);
         showToast(`${detected.length} protocolo(s) → ${puntosFinales.length} puntos prioritarios marcados.`, 'success');
+    }
+
+    /* ── Tarjeta de punto (usada por el análisis IA) ── */
+    function crearTarjetaPuntoIA(n, customDB, puntoScore) {
+        const d = customDB[n] || PUNTOS_DB[n];
+        const score = (puntoScore[n] && puntoScore[n].count) || 1;
+        const div = document.createElement('div');
+        div.className = 'protocolo-punto-card';
+        div.setAttribute('data-punto', n);
+        div.style.position = 'relative';
+        const rmBtnAi = document.createElement('button');
+        rmBtnAi.type = 'button';
+        rmBtnAi.textContent = '✕ quitar';
+        rmBtnAi.title = `Quitar "${n}" de esta sesión`;
+        rmBtnAi.style.cssText = 'float:right;background:none;border:1px solid var(--border);border-radius:20px;cursor:pointer;color:var(--text-muted);font-size:0.62rem;padding:2px 8px;';
+        rmBtnAi.onclick = () => quitarPuntoDeSesion(n);
+        div.appendChild(rmBtnAi);
+        // Badge de escuela
+        const escKey = ESCUELAS[n] || 'china';
+        const escInfo = ESCUELA_LABELS[escKey] || ESCUELA_LABELS.china;
+        const escSpan = document.createElement('span');
+        escSpan.className = 'escuela-badge ' + escInfo.css;
+        escSpan.textContent = escInfo.label;
+        div.appendChild(escSpan);
+        div.appendChild(document.createElement('br'));
+        const b = document.createElement('b'); b.textContent = n + ': '; div.appendChild(b);
+        div.appendChild(document.createTextNode((d?.desc || '...') + ' '));
+        // Contraindicaciones
+        const contrasCard = CONTRAINDICACIONES[n];
+        if (contrasCard && contrasCard.length > 0) {
+            const cDiv = document.createElement('div');
+            cDiv.className = 'contra-box visible';
+            cDiv.style.marginTop = '4px';
+            cDiv.innerHTML = '🚫 <strong>Contraindicaciones:</strong> ' + contrasCard.join(' | ');
+            div.appendChild(cDiv);
+        }
+        if (score > 1) {
+            const badge = document.createElement('span');
+            badge.style.cssText = 'background:var(--accent);color:white;font-size:0.65rem;font-weight:700;padding:1px 6px;border-radius:20px;margin-left:3px;';
+            badge.textContent = `×${score}`;
+            badge.title = `Aparece en ${score} de los protocolos detectados`;
+            div.appendChild(badge);
+        }
+        return div;
     }
 
     /* ── DRAG MOUSE ── */
@@ -4281,6 +4447,7 @@ const PROTOCOLOS = {
         if (ciclo) ciclo.value = '-';
         // Puntos y checkboxes
         clearAllPoints();
+        aiAnalisisEstado = { texto: null, maxPuntos: null, excluidos: new Set() };
         clearTecnicas && clearTecnicas();
         resetDolorScale && resetDolorScale();
         setLat && setLat('Derecha');
@@ -4315,6 +4482,7 @@ const PROTOCOLOS = {
         clearTecnicas();
         document.querySelectorAll('#p-checklist input[type="checkbox"]').forEach(cb => cb.checked = false);
         clearAllPoints();
+        aiAnalisisEstado = { texto: null, maxPuntos: null, excluidos: new Set() };
         resetDolorScale();
         setLat('Derecha');
         document.getElementById('p-nombre').focus();
@@ -5038,7 +5206,7 @@ const PROTOCOLOS = {
         let cy = y + 11;
         campos.filter(Boolean).forEach(c => {
             doc.setFontSize(7); doc.setFont('helvetica', 'normal');
-            doc.setTextColor(c.color || PDF_COLORS.slate);
+            doc.setTextColor(...(c.color || PDF_COLORS.slate));
             doc.text(c.text, 19, cy);
             cy += 5.5;
         });
@@ -5049,6 +5217,7 @@ const PROTOCOLOS = {
        exportPDF()  →  PDF de la sesión activa
        ══════════════════════════════════════════ */
     function exportPDF() {
+      try {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
         const C = PDF_COLORS;
@@ -5308,15 +5477,24 @@ const PROTOCOLOS = {
                 _a1.href = _url1; _a1.download = _fn1;
                 document.body.appendChild(_a1); _a1.click();
                 setTimeout(() => { document.body.removeChild(_a1); URL.revokeObjectURL(_url1); }, 200);
-            } catch(e2) { showToast('No se pudo descargar el PDF.', 'error'); }
+            } catch(e2) {
+                console.error('Error exportPDF - doc.save:', e);
+                console.error('Error exportPDF - blob fallback:', e2);
+                showToast('No se pudo descargar el PDF: ' + (e2 && e2.message ? e2.message : String(e2)), 'error');
+            }
         }
         showToast('PDF de sesión generado.', 'success');
+      } catch (outerErr) {
+        console.error('Error exportPDF (construcción del documento):', outerErr);
+        showToast('Error al generar el PDF: ' + (outerErr && outerErr.message ? outerErr.message : String(outerErr)), 'error');
+      }
     }
 
     /* ════════════════════════════════════════════════════
        exportPDFFicha(nombre)  →  Ficha clínica integral
        ════════════════════════════════════════════════════ */
     function exportPDFFicha(nombre) {
+      try {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
         const C = PDF_COLORS;
@@ -5586,8 +5764,21 @@ const PROTOCOLOS = {
             _a2.href = _url2; _a2.download = _fn2;
             document.body.appendChild(_a2); _a2.click();
             setTimeout(() => { document.body.removeChild(_a2); URL.revokeObjectURL(_url2); }, 200);
-        } catch(e) { doc.save(_fn2); }
+        } catch(e) {
+            try {
+                doc.save(_fn2);
+            } catch(e2) {
+                console.error('Error exportPDFFicha - blob:', e);
+                console.error('Error exportPDFFicha - doc.save:', e2);
+                showToast('No se pudo descargar el PDF: ' + (e2 && e2.message ? e2.message : String(e2)), 'error');
+                return;
+            }
+        }
         showToast('Ficha integral generada.', 'success');
+      } catch (outerErr) {
+        console.error('Error exportPDFFicha (construcción del documento):', outerErr);
+        showToast('Error al generar la ficha: ' + (outerErr && outerErr.message ? outerErr.message : String(outerErr)), 'error');
+      }
     }
 
     /* ── EXPORT CITAS EXCEL ── */
